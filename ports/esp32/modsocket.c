@@ -153,16 +153,6 @@ void usocket_events_handler(void) {
 
 #endif // MICROPY_PY_USOCKET_EVENTS
 
-NORETURN static void exception_from_errno(int _errno) {
-    // Here we need to convert from lwip errno values to MicroPython's standard ones
-    if (_errno == EADDRINUSE) {
-        _errno = MP_EADDRINUSE;
-    } else if (_errno == EINPROGRESS) {
-        _errno = MP_EINPROGRESS;
-    }
-    mp_raise_OSError(_errno);
-}
-
 static inline void check_for_exceptions(void) {
     mp_handle_pending(true);
 }
@@ -285,7 +275,7 @@ STATIC mp_obj_t socket_make_new(const mp_obj_type_t *type_in, size_t n_args, siz
 
     sock->fd = lwip_socket(sock->domain, sock->type, sock->proto);
     if (sock->fd < 0) {
-        exception_from_errno(errno);
+        mp_raise_OSError(errno);
     }
     _socket_settimeout(sock, UINT64_MAX);
 
@@ -299,7 +289,7 @@ STATIC mp_obj_t socket_bind(const mp_obj_t arg0, const mp_obj_t arg1) {
     int r = lwip_bind(self->fd, res->ai_addr, res->ai_addrlen);
     lwip_freeaddrinfo(res);
     if (r < 0) {
-        exception_from_errno(errno);
+        mp_raise_OSError(errno);
     }
     return mp_const_none;
 }
@@ -310,7 +300,7 @@ STATIC mp_obj_t socket_listen(const mp_obj_t arg0, const mp_obj_t arg1) {
     int backlog = mp_obj_get_int(arg1);
     int r = lwip_listen(self->fd, backlog);
     if (r < 0) {
-        exception_from_errno(errno);
+        mp_raise_OSError(errno);
     }
     return mp_const_none;
 }
@@ -331,7 +321,7 @@ STATIC mp_obj_t socket_accept(const mp_obj_t arg0) {
             break;
         }
         if (errno != EAGAIN) {
-            exception_from_errno(errno);
+            mp_raise_OSError(errno);
         }
         check_for_exceptions();
     }
@@ -373,10 +363,7 @@ STATIC mp_obj_t socket_connect(const mp_obj_t arg0, const mp_obj_t arg1) {
     MP_THREAD_GIL_ENTER();
     lwip_freeaddrinfo(res);
     if (r != 0) {
-        // side-note: LwIP internally doesn't seem to have an error code for ECONNREFUSED and
-        // so refused connections show up as ECONNRESET. Could be band-aided for blocking connect,
-        // harder to do for nonblocking.
-        exception_from_errno(errno);
+        mp_raise_OSError(errno);
     }
 
     return mp_const_none;
@@ -395,7 +382,7 @@ STATIC mp_obj_t socket_setsockopt(size_t n_args, const mp_obj_t *args) {
             int val = mp_obj_get_int(args[3]);
             int ret = lwip_setsockopt(self->fd, SOL_SOCKET, opt, &val, sizeof(int));
             if (ret != 0) {
-                exception_from_errno(errno);
+                mp_raise_OSError(errno);
             }
             break;
         }
@@ -546,7 +533,7 @@ mp_obj_t _socket_recvfrom(mp_obj_t self_in, mp_obj_t len_in,
     int errcode;
     mp_uint_t ret = _socket_read_data(self_in, vstr.buf, len, from, from_len, &errcode);
     if (ret == MP_STREAM_ERROR) {
-        exception_from_errno(errcode);
+        mp_raise_OSError(errcode);
     }
 
     vstr.len = ret;
@@ -580,7 +567,7 @@ int _socket_send(socket_obj_t *sock, const char *data, size_t datalen) {
         int r = lwip_write(sock->fd, data + sentlen, datalen - sentlen);
         MP_THREAD_GIL_ENTER();
         if (r < 0 && errno != EWOULDBLOCK) {
-            exception_from_errno(errno);
+            mp_raise_OSError(errno);
         }
         if (r > 0) {
             sentlen += r;
@@ -638,7 +625,7 @@ STATIC mp_obj_t socket_sendto(mp_obj_t self_in, mp_obj_t data_in, mp_obj_t addr_
             return mp_obj_new_int_from_uint(ret);
         }
         if (ret == -1 && errno != EWOULDBLOCK) {
-            exception_from_errno(errno);
+            mp_raise_OSError(errno);
         }
         check_for_exceptions();
     }
