@@ -111,7 +111,7 @@ void mp_task(void *pvParameter) {
     }
     #endif
     printf("MP HEAP: %d, leaving %d for esp-idf\n", mp_task_heap_size,
-            total_heap - mp_task_heap_size);
+        total_heap - mp_task_heap_size);
 
     void *mp_task_heap = malloc(mp_task_heap_size);
     #endif
