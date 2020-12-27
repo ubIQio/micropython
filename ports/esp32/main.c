@@ -42,6 +42,7 @@
 #else
 #include "esp_spiram.h"
 #endif
+#include "esp_heap_caps.h"
 
 #include "py/stackctrl.h"
 #include "py/nlr.h"
@@ -101,6 +102,17 @@ void mp_task(void *pvParameter) {
     #else
     // Allocate the uPy heap using malloc and get the largest available region
     size_t mp_task_heap_size = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
+
+    size_t total_heap = heap_caps_get_free_size(ESP_PARTITION_TYPE_DATA);
+    #if MICROPY_IDF_HEAP_MIN
+    // MICROPY_IDF_HEAP_MIN is the minimum number of bytes we need to leave for esp-idf
+    if (total_heap - mp_task_heap_size < MICROPY_IDF_HEAP_MIN) {
+        mp_task_heap_size = total_heap - MICROPY_IDF_HEAP_MIN;
+    }
+    #endif
+    printf("MP HEAP: %d, leaving %d for esp-idf\n", mp_task_heap_size,
+            total_heap - mp_task_heap_size);
+
     void *mp_task_heap = malloc(mp_task_heap_size);
     #endif
 
