@@ -107,7 +107,8 @@ STATIC void machine_hw_spi_init_internal(
 
     // if we're not initialized, then we're
     // implicitly 'changed', since this is the init routine
-    bool changed = self->state != MACHINE_HW_SPI_STATE_INIT;
+    bool bus_changed = self->state != MACHINE_HW_SPI_STATE_INIT;
+    bool dev_changed = bus_changed;
 
     esp_err_t ret;
 
@@ -115,118 +116,131 @@ STATIC void machine_hw_spi_init_internal(
 
     if (host != -1 && host != self->host) {
         self->host = host;
-        changed = true;
+        bus_changed = true;
     }
 
     if (baudrate != -1 && baudrate != self->baudrate) {
         self->baudrate = baudrate;
-        changed = true;
+        dev_changed = true;
     }
 
     if (polarity != -1 && polarity != self->polarity) {
         self->polarity = polarity;
-        changed = true;
+        bus_changed = true;
     }
 
     if (phase != -1 && phase != self->phase) {
         self->phase = phase;
-        changed = true;
+        bus_changed = true;
     }
 
     if (bits != -1 && bits != self->bits) {
         self->bits = bits;
-        changed = true;
+        bus_changed = true;
     }
 
     if (firstbit != -1 && firstbit != self->firstbit) {
         self->firstbit = firstbit;
-        changed = true;
+        bus_changed = true;
     }
 
     if (sck != -2 && sck != self->sck) {
         self->sck = sck;
-        changed = true;
+        bus_changed = true;
     }
 
     if (mosi != -2 && mosi != self->mosi) {
         self->mosi = mosi;
-        changed = true;
+        bus_changed = true;
     }
 
     if (miso != -2 && miso != self->miso) {
         self->miso = miso;
-        changed = true;
+        bus_changed = true;
     }
 
     if (self->host != HSPI_HOST && self->host != VSPI_HOST) {
         mp_raise_ValueError(MP_ERROR_TEXT("SPI ID must be either HSPI(1) or VSPI(2)"));
     }
 
-    if (changed) {
+    // If the bus params changed, init or re-init the bus in esp-idf
+
+    if (bus_changed) {
+        dev_changed = true; // will have to re-init dev for sure
+
         if (self->state == MACHINE_HW_SPI_STATE_INIT) {
             self->state = MACHINE_HW_SPI_STATE_DEINIT;
             machine_hw_spi_deinit_internal(&old_self);
         }
-    } else {
-        return; // no changes
+
+        spi_bus_config_t buscfg = {
+            .miso_io_num = self->miso,
+            .mosi_io_num = self->mosi,
+            .sclk_io_num = self->sck,
+            .quadwp_io_num = -1,
+            .quadhd_io_num = -1
+        };
+
+        // Initialize the SPI bus
+
+        // Select DMA channel based on the hardware SPI host
+        int dma_chan = 0;
+        if (self->host == HSPI_HOST) {
+            dma_chan = 1;
+        } else if (self->host == VSPI_HOST) {
+            dma_chan = 2;
+        }
+
+        ret = spi_bus_initialize(self->host, &buscfg, dma_chan);
+        switch (ret) {
+            case ESP_ERR_INVALID_ARG:
+                mp_raise_msg(&mp_type_OSError, MP_ERROR_TEXT("invalid configuration"));
+                return;
+
+            case ESP_ERR_INVALID_STATE:
+                mp_raise_msg(&mp_type_OSError, MP_ERROR_TEXT("SPI host already in use"));
+                return;
+        }
+
+        printf("spi bus init\n");
+    } else if (dev_changed) {
+        // we need to re-init device, ensure old dev is removed first
+        spi_bus_remove_device(self->spi);
+        self->spi = NULL;
     }
 
-    spi_bus_config_t buscfg = {
-        .miso_io_num = self->miso,
-        .mosi_io_num = self->mosi,
-        .sclk_io_num = self->sck,
-        .quadwp_io_num = -1,
-        .quadhd_io_num = -1
-    };
+    // If the device params changed, add or remove&re-add a device is esp-idf
 
-    spi_device_interface_config_t devcfg = {
-        .clock_speed_hz = self->baudrate,
-        .mode = self->phase | (self->polarity << 1),
-        .spics_io_num = -1, // No CS pin
-        .queue_size = 1,
-        .flags = self->firstbit == MICROPY_PY_MACHINE_SPI_LSB ? SPI_DEVICE_TXBIT_LSBFIRST | SPI_DEVICE_RXBIT_LSBFIRST : 0,
-        .pre_cb = NULL
-    };
+    if (dev_changed) {
+        spi_device_interface_config_t devcfg = {
+            .clock_speed_hz = self->baudrate,
+            .mode = self->phase | (self->polarity << 1),
+            .spics_io_num = -1, // No CS pin
+            .queue_size = 1,
+            .flags = self->firstbit == MICROPY_PY_MACHINE_SPI_LSB ? SPI_DEVICE_TXBIT_LSBFIRST | SPI_DEVICE_RXBIT_LSBFIRST : 0,
+            .pre_cb = NULL
+        };
 
-    // Initialize the SPI bus
 
-    // Select DMA channel based on the hardware SPI host
-    int dma_chan = 0;
-    if (self->host == HSPI_HOST) {
-        dma_chan = 1;
-    } else if (self->host == VSPI_HOST) {
-        dma_chan = 2;
+        ret = spi_bus_add_device(self->host, &devcfg, &self->spi);
+        switch (ret) {
+            case ESP_ERR_INVALID_ARG:
+                mp_raise_msg(&mp_type_OSError, MP_ERROR_TEXT("invalid configuration"));
+                spi_bus_free(self->host);
+                return;
+
+            case ESP_ERR_NO_MEM:
+                mp_raise_msg(&mp_type_OSError, MP_ERROR_TEXT("out of memory"));
+                spi_bus_free(self->host);
+                return;
+
+            case ESP_ERR_NOT_FOUND:
+                mp_raise_msg(&mp_type_OSError, MP_ERROR_TEXT("no free slots"));
+                spi_bus_free(self->host);
+                return;
+        }
+        self->state = MACHINE_HW_SPI_STATE_INIT;
     }
-
-    ret = spi_bus_initialize(self->host, &buscfg, dma_chan);
-    switch (ret) {
-        case ESP_ERR_INVALID_ARG:
-            mp_raise_msg(&mp_type_OSError, MP_ERROR_TEXT("invalid configuration"));
-            return;
-
-        case ESP_ERR_INVALID_STATE:
-            mp_raise_msg(&mp_type_OSError, MP_ERROR_TEXT("SPI host already in use"));
-            return;
-    }
-
-    ret = spi_bus_add_device(self->host, &devcfg, &self->spi);
-    switch (ret) {
-        case ESP_ERR_INVALID_ARG:
-            mp_raise_msg(&mp_type_OSError, MP_ERROR_TEXT("invalid configuration"));
-            spi_bus_free(self->host);
-            return;
-
-        case ESP_ERR_NO_MEM:
-            mp_raise_msg(&mp_type_OSError, MP_ERROR_TEXT("out of memory"));
-            spi_bus_free(self->host);
-            return;
-
-        case ESP_ERR_NOT_FOUND:
-            mp_raise_msg(&mp_type_OSError, MP_ERROR_TEXT("no free slots"));
-            spi_bus_free(self->host);
-            return;
-    }
-    self->state = MACHINE_HW_SPI_STATE_INIT;
 }
 
 STATIC void machine_hw_spi_deinit(mp_obj_base_t *self_in) {
