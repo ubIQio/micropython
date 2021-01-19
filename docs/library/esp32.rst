@@ -270,15 +270,19 @@ Constants
 
    Selects the wake level for pins.
 
+.. _esp32.NVS:
+
 Non-Volatile Storage
 --------------------
+
+*This feature is only supported with esp-idf v4 and above.*
 
 This class gives access to the Non-Volatile storage managed by ESP-IDF. The NVS is partitioned
 into namespaces and each namespace contains typed key-value pairs. The keys are strings and the
 values may be various integer types, strings, and binary blobs. The driver currently only
 supports 32-bit signed integers and blobs.
 
-__Warning__: Changes to NVS need to be committed to flash by calling the commit method. Failure
+**Warning**: Changes to NVS need to be committed to flash by calling the commit method. Failure
 to call commit results in changes being lost at the next reset.
 
 .. class:: NVS(namespace)
@@ -314,4 +318,4 @@ to call commit results in changes being lost at the next reset.
 
 .. method:: NVS.commit()
 
-    Commits changes made by *set_xxx* methods to flash.
+    Commits changes made by ``set_xxx`` methods to flash.
