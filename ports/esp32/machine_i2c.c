@@ -65,43 +65,33 @@ STATIC void machine_hw_i2c_init(machine_hw_i2c_obj_t *self, uint32_t freq, uint3
     i2c_driver_install(self->port, I2C_MODE_MASTER, 0, 0, 0);
 }
 
-int machine_hw_i2c_transfer(mp_obj_base_t *self_in, uint16_t addr, size_t nbuf, mp_machine_i2c_buf_t *bufs, unsigned int flags) {
+int machine_hw_i2c_transfer(mp_obj_base_t *self_in, uint16_t addr, size_t n, mp_machine_i2c_buf_t *bufs, unsigned int flags) {
     machine_hw_i2c_obj_t *self = MP_OBJ_TO_PTR(self_in);
+
     i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+    i2c_master_start(cmd);
+    i2c_master_write_byte(cmd, addr << 1 | (flags & MP_MACHINE_I2C_FLAG_READ), true);
 
     int data_len = 0;
-
-    i2c_master_start(cmd); 
-
-    if (nbuf > 1) { // if we have 2 buffers, Q memory/register address
-        // memory address transfer is always write transaction    
-        i2c_master_write_byte(cmd, addr << 1 , true);       // Q slave addr (W)
-        i2c_master_write(cmd, bufs->buf, bufs->len, true);  // Q memory address from buffer
-        data_len += bufs->len;
-        ++bufs;  //switch to data buffer
-    }
-
-    i2c_master_start(cmd); // (this is a repeated start if we already sent a mem address)
-    // Q slave address for data transaction (R/W)
-    i2c_master_write_byte(cmd, addr << 1 | (flags & MP_MACHINE_I2C_FLAG_READ), true); 
-
-    if (flags & MP_MACHINE_I2C_FLAG_READ) { 
-        i2c_master_read(cmd, bufs->buf, bufs->len,I2C_MASTER_LAST_NACK); 
-
-    } else { 
-        if (bufs->len != 0) {
-            i2c_master_write(cmd, bufs->buf, bufs->len, true);
+    for (; n--; ++bufs) {
+        if (flags & MP_MACHINE_I2C_FLAG_READ) {
+            i2c_master_read(cmd, bufs->buf, bufs->len, n == 0 ? I2C_MASTER_LAST_NACK : I2C_MASTER_ACK);
+        } else {
+            if (bufs->len != 0) {
+                i2c_master_write(cmd, bufs->buf, bufs->len, true);
+            }
         }
+        data_len += bufs->len;
     }
+
     if (flags & MP_MACHINE_I2C_FLAG_STOP) {
         i2c_master_stop(cmd);
     }
-    data_len += bufs->len;
+
     // TODO proper timeout
     esp_err_t err = i2c_master_cmd_begin(self->port, cmd, 100 * (1 + data_len) / portTICK_RATE_MS);
     i2c_cmd_link_delete(cmd);
 
-// error:
     if (err == ESP_FAIL) {
         return -MP_ENODEV;
     } else if (err == ESP_ERR_TIMEOUT) {
