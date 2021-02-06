@@ -348,6 +348,7 @@ SRC_C = \
 	modesp32.c \
 	espneopixel.c \
 	machine_hw_spi.c \
+	machine_i2s.c \
 	machine_wdt.c \
 	mpthreadport.c \
 	machine_rtc.c \
@@ -386,7 +387,7 @@ OBJ_MP += $(addprefix $(BUILD)/, $(LIB_SRC_C:.c=.o))
 OBJ_MP += $(addprefix $(BUILD)/, $(DRIVERS_SRC_C:.c=.o))
 
 # Only enable this for the MicroPython source: ignore warnings from esp-idf.
-$(OBJ_MP): CFLAGS += -Wdouble-promotion -Wfloat-conversion
+# $(OBJ_MP): CFLAGS += -Wdouble-promotion -Wfloat-conversion
 
 # List of sources for qstr extraction
 SRC_QSTR += $(SRC_C) $(SRC_CXX) $(EXTMOD_SRC_C) $(LIB_SRC_C) $(DRIVERS_SRC_C)
@@ -958,7 +959,7 @@ $(BUILD)/bootloader.elf: $(BOOTLOADER_OBJ) $(addprefix $(BOOTLOADER_LIB_DIR)/lib
 ################################################################################
 # Declarations to build the partitions
 
-PYTHON2 ?= python2
+PYTHON2 ?= python3
 
 # Can be overriden by mkconfigboard.mk.
 PART_SRC ?= partitions.csv
