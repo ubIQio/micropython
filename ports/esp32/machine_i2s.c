@@ -288,9 +288,10 @@ STATIC mp_obj_t machine_i2s_make_new(const mp_obj_type_t *type, size_t n_pos_arg
     self->id = i2s_id;
 
     // is I2S peripheral already in use?
-    if (self->used) {
-        mp_raise_ValueError(MP_ERROR_TEXT("I2S port is already in use"));
-    }
+    // if (self->used) {
+        // mp_raise_ValueError(MP_ERROR_TEXT("I2S port is already in use"));
+    // }
+    
 
     mp_map_t kw_args;
     mp_map_init_fixed_table(&kw_args, n_kw_args, args + n_pos_args);
@@ -318,9 +319,9 @@ STATIC mp_obj_t machine_i2s_readinto(mp_uint_t n_pos_args, const mp_obj_t *pos_a
 
     machine_i2s_obj_t *self = pos_args[0];
 
-    if (!self->used) {
-        mp_raise_ValueError(MP_ERROR_TEXT("I2S port is not initialized"));
-    }
+    // if (!self->used) {
+        // mp_raise_ValueError(MP_ERROR_TEXT("I2S port is not initialized"));
+    // }
 
     if (self->mode != (I2S_MODE_MASTER | I2S_MODE_RX)) {
         mp_raise_ValueError(MP_ERROR_TEXT("I2S not configured for read method"));
@@ -405,12 +406,28 @@ STATIC mp_obj_t machine_i2s_deinit(mp_obj_t self_in) {
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_1(machine_i2s_deinit_obj, machine_i2s_deinit);
 
+STATIC mp_obj_t machine_i2s_start(mp_obj_t self_in) {
+    machine_i2s_obj_t *self = self_in;
+    i2s_start(self->id);
+    return mp_const_none;
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_1(machine_i2s_start_obj, machine_i2s_start);
+
+STATIC mp_obj_t machine_i2s_stop(mp_obj_t self_in) {
+    machine_i2s_obj_t *self = self_in;
+    i2s_stop(self->id);
+    return mp_const_none;
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_1(machine_i2s_stop_obj, machine_i2s_stop);
+
 STATIC const mp_rom_map_elem_t machine_i2s_locals_dict_table[] = {
     // Methods
     { MP_ROM_QSTR(MP_QSTR_init),            MP_ROM_PTR(&machine_i2s_init_obj) },
     { MP_ROM_QSTR(MP_QSTR_readinto),        MP_ROM_PTR(&machine_i2s_readinto_obj) },
     { MP_ROM_QSTR(MP_QSTR_write),           MP_ROM_PTR(&machine_i2s_write_obj) },
     { MP_ROM_QSTR(MP_QSTR_deinit),          MP_ROM_PTR(&machine_i2s_deinit_obj) },
+    { MP_ROM_QSTR(MP_QSTR_start),          MP_ROM_PTR(&machine_i2s_start_obj) },
+    { MP_ROM_QSTR(MP_QSTR_stop),          MP_ROM_PTR(&machine_i2s_stop_obj) },
 
     // Constants
     { MP_ROM_QSTR(MP_QSTR_NUM0),            MP_ROM_INT(I2S_NUM_0) },
